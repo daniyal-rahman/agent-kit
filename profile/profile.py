@@ -1,12 +1,19 @@
 #!/usr/bin/env python3
 """Profile how someone works with their coding agents, from their own chat history.
 
-Reads Claude Code (~/.claude*/projects/**/*.jsonl) and Codex (~/.codex/sessions/**/*.jsonl)
-logs. Nothing leaves the machine and no model is called: this is counting. The setup skill
-reads the output and does the judging.
+Reads, all at once, any of:
+  --root ~              finds Claude Code (~/.claude*/projects) and Codex (~/.codex/sessions) logs,
+                        and ChatGPT or Claude export zips in ~/Downloads
+  --claude DIR --codex DIR   those logs in other places
+  --export FILE         a ChatGPT or Claude.ai data export: the .zip, or its conversations.json
+  --messages FILE       anything else, converted first to plain JSON lines, one message per line:
+                        {"chat": "id", "time": "2026-11-02T14:03:00Z" or epoch seconds,
+                         "role": "user" or "assistant", "text": "...",
+                         "model": "optional", "tool": "optional, e.g. cursor", "project": "optional"}
+Nothing leaves the machine and no model is called: this is counting. The setup skill reads
+the output and does the judging.
 
   python3 profile.py --root ~ --out ~/.agents/profile [--tz America/Los_Angeles] [--since 2026-08-01]
-  python3 profile.py --claude DIR --codex DIR --out DIR      (explicit folders instead of --root)
 
 Writes into --out (chmod 700, it holds chat text):
   profile.md       the numbers, one section per question
@@ -118,6 +125,75 @@ def read_codex(path):
                 events.append(("agent", iso(ts), text_of(p.get("content")), model))
     return dict(tool="codex", session=sid, cwd=cwd, events=events, path=path)
 
+def when(v):
+    if v in (None, ""):
+        return None
+    if isinstance(v, (int, float)) or re.fullmatch(r"\d+(\.\d+)?", str(v)):
+        v = float(v)
+        return dt.datetime.fromtimestamp(v / 1000 if v > 1e11 else v, dt.timezone.utc)
+    t = iso(str(v))
+    return t if t.tzinfo else t.replace(tzinfo=dt.timezone.utc)
+
+def load_export(path):
+    """ChatGPT or Claude.ai export (zip or conversations.json) -> sessions."""
+    import zipfile
+    if zipfile.is_zipfile(path):
+        with zipfile.ZipFile(path) as z:
+            name = next((n for n in z.namelist() if n.endswith("conversations.json")), None)
+            if not name:
+                return []
+            data = json.loads(z.read(name))
+    else:
+        data = json.load(open(path))
+    out = []
+    for c in data if isinstance(data, list) else []:
+        events = []
+        if "mapping" in c:  # ChatGPT: a tree of nodes; follow the branch that was kept
+            tool, sid, node, chain = "chatgpt", c.get("conversation_id") or c.get("id"), c.get("current_node"), []
+            while node and node in c["mapping"]:
+                chain.append(c["mapping"][node]); node = c["mapping"][node].get("parent")
+            for n in reversed(chain):
+                m = n.get("message") or {}
+                role, t = (m.get("author") or {}).get("role"), when(m.get("create_time"))
+                parts = (m.get("content") or {}).get("parts") or []
+                text = "\n".join(x for x in parts if isinstance(x, str)).strip()
+                if t and text and role in ("user", "assistant"):
+                    events.append(("human" if role == "user" else "agent", t, clean(text) if role == "user" else text,
+                                   None if role == "user" else (m.get("metadata") or {}).get("model_slug")))
+        elif "chat_messages" in c:  # Claude.ai
+            tool, sid = "claude.ai", c.get("uuid")
+            for m in c["chat_messages"]:
+                text = m.get("text") or text_of(m.get("content"))
+                t = when(m.get("created_at"))
+                if t and text:
+                    human = m.get("sender") == "human"
+                    events.append(("human" if human else "agent", t, clean(text) if human else text, None))
+        else:
+            continue
+        events = [e for e in events if e[2]]
+        out.append(dict(tool=tool, session=str(sid), cwd=c.get("title") or c.get("name") or "web chat", events=events, path=path))
+    return out
+
+def load_messages(path):
+    """The plain format: one JSON object per line (see the top of this file)."""
+    chats = collections.OrderedDict()
+    for n, line in enumerate(open(path, errors="replace"), 1):
+        if not line.strip():
+            continue
+        try:
+            d = json.loads(line)
+            t = when(d["time"])
+        except (ValueError, KeyError) as e:
+            print(f"{path}:{n}: skipped ({e})", file=sys.stderr)
+            continue
+        role = "human" if d.get("role") in ("user", "human") else "agent"
+        text = clean(d.get("text", "")) if role == "human" else d.get("text", "")
+        s = chats.setdefault(str(d.get("chat")), dict(tool=d.get("tool") or "other", session=str(d.get("chat")),
+                                                       cwd=d.get("project"), events=[], path=path))
+        if text:
+            s["events"].append((role, t, text, d.get("model")))
+    return list(chats.values())
+
 def pct(xs, q):
     xs = sorted(xs)
     return xs[min(len(xs) - 1, int(q * len(xs)))] if xs else None
@@ -135,16 +211,30 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--root", help="home folder to look in (finds .claude*/projects and .codex/sessions)")
     ap.add_argument("--claude", nargs="*", default=[]); ap.add_argument("--codex", nargs="*", default=[])
+    ap.add_argument("--export", nargs="*", default=[]); ap.add_argument("--messages", nargs="*", default=[])
     ap.add_argument("--out", required=True); ap.add_argument("--tz", default=None); ap.add_argument("--since", default=None)
     ap.add_argument("--owner", default=None, help="the person's first name: messages that talk about them in the third person were written by an agent")
     a = ap.parse_args()
     if a.root:
         a.claude += [p for p in glob.glob(os.path.join(a.root, ".claude*/projects")) if os.path.isdir(p)]
         a.codex += [p for p in [os.path.join(a.root, ".codex/sessions"), os.path.join(a.root, ".codex/archived_sessions")] if os.path.isdir(p)]
+        import zipfile
+        for z in glob.glob(os.path.join(a.root, "Downloads", "*.zip")):
+            try:
+                if any(n.endswith("conversations.json") for n in zipfile.ZipFile(z).namelist()):
+                    a.export.append(z)
+            except (zipfile.BadZipFile, OSError):
+                pass
     tz = ZoneInfo(a.tz) if a.tz else dt.datetime.now().astimezone().tzinfo
     files = [(read_claude, f) for d in a.claude for f in glob.glob(os.path.join(d, "**/*.jsonl"), recursive=True) if "/subagents/" not in f]
     files += [(read_codex, f) for d in a.codex for f in glob.glob(os.path.join(d, "**/*.jsonl"), recursive=True)]
-    sessions = [s for s in (fn(f) for fn, f in files) if s and any(e[0] == "human" for e in s["events"])]
+    sessions = [s for s in (fn(f) for fn, f in files) if s]
+    for f in a.export:
+        sessions += load_export(f)
+    for f in a.messages:
+        sessions += load_messages(f)
+    files += [(None, f) for f in a.export + a.messages]
+    sessions = [s for s in sessions if any(e[0] == "human" for e in s["events"])]
     # Messages that share an opening with many others and run long were sent by a script, a scheduler or another agent.
     third = re.compile(r"\b" + re.escape(a.owner) + r"('s| (said|wants|asked|requested|just|is|has|will|would|can|needs|prefers|uses|decided|approved|told))\b", re.I) if a.owner else None
     opens = collections.Counter(e[2][:20] for s in sessions for e in s["events"] if e[0] == "human" and len(e[2]) > 300)
@@ -166,7 +256,7 @@ def main():
         ev = sorted(s["events"], key=lambda e: e[1])
         if since:
             ev = [e for e in ev if e[1] >= since]
-        proj = os.path.basename((s["cwd"] or "?").rstrip("/")) or "?"
+        proj = (os.path.basename((s["cwd"] or "?").rstrip("/")) if s["tool"] in ("claude", "codex") else (s["cwd"] or s["tool"])) or "?"
         humans = [i for i, e in enumerate(ev) if e[0] == "human"]
         if not humans:
             continue

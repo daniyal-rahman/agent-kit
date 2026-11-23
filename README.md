@@ -4,6 +4,11 @@ Makes your coding agents (Claude Code, Codex, and others that read an instructio
 file) work for you like a good hire: they finish things, show proof, report
 briefly, and stop making you repeat yourself.
 
+The heart of it: your agent reads every past chat you've had with an AI that it
+can find (Claude Code, Codex, ChatGPT or Claude.ai exports, other tools), finds the
+friction that keeps coming up (what you had to correct, repeat or chase), and
+builds your setup against the worst of it.
+
 It has two parts:
 - **What works for anyone**: a short instruction file (`core.md`) and a few skills
   for writing, reviews, research, design and improving work to a standard.
@@ -24,8 +29,9 @@ and about 10 minutes of yours. It uses a fair share of your plan's usage (a long
 session plus some subagents); a voice library adds about 80 model calls.
 
 ## What it looks at
-Your installed agent tools, your machine, your past chats in `~/.claude` and
-`~/.codex`, your project folders, your existing instruction files, and only with
+Your installed agent tools, your machine, every AI chat history it can find
+(`~/.claude`, `~/.codex`, ChatGPT or Claude.ai export zips, other tools'
+histories), your project folders, your existing instruction files, and only with
 your say-so your mail or documents.
 
 ## What stays where

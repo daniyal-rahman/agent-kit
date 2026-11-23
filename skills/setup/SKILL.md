@@ -11,6 +11,10 @@ one, without them having to repeat themselves. The kit gives you the parts that
 hold for anyone (`core.md`, the skills). Your job is to study this person and build
 the parts that are theirs, from their own chats, writing and machines.
 
+The heart of it is step 2: going through every past chat with an AI you can find
+and pulling out the friction that keeps coming up (what they had to correct,
+repeat or chase), then building against the worst of it.
+
 Work like the rest of the kit says: find out before asking, rough version of
 everything first, show proof. This can take a few hours. Most of it needs nothing
 from the owner.
@@ -48,9 +52,22 @@ Find out, and write each fact with its source into the progress file:
 - **Machine**: operating system, CPU/GPU, disk space; other machines it can reach
   (`~/.ssh/config` host names; don't log in anywhere yet). Keep apart a machine
   you inspected and one you only saw mentioned in chats.
-- **Chat history**: `LOOK/.claude*/projects/`, `LOOK/.codex/sessions/`, Claude or
-  ChatGPT export zips in Downloads (`conversations.json`), anything else you find.
-  How many chats, from when to when.
+- **Chat history, all of it**: `LOOK/.claude*/projects/`, `LOOK/.codex/sessions/`,
+  ChatGPT or Claude.ai export zips (`conversations.json` inside; look in Downloads
+  and Documents), and any other tool's history: Cursor, Gemini CLI, opencode,
+  Aider (`.aider.chat.history.md` in repos), Copilot, Windsurf, Zed, a chat app
+  such as T3 Code or a self-hosted UI, notes where they pasted chats. Search the
+  home folder for folders and databases named after AI tools (`find`, `ls -a`,
+  `~/.config`, `~/.local/share`, `~/Library/Application Support`). For each: what
+  it is, where, how many chats, from when to when. If they use ChatGPT or
+  Claude.ai on the web and there's no export, note it and ask for one in step 3.
+- **Reaching another model**: what this person's setup can use as a fresh reviewer
+  from a different model family. Check, in this order: their harness's own way to
+  start a subagent or delegate to another provider (read its docs or `--help`); a
+  second agent CLI on the PATH that is signed in (for example `codex exec` from a
+  Claude session, `claude -p` from a Codex one, `gemini -p`); an API key already in
+  their environment. If none works, the reviewer is a fresh agent of the same
+  model with no shared context (a subagent, or a new headless session).
 - **Their work**: which folders hold it (git repos under home and common project
   folders), which are active (recent commits, recent chats), and what kind of work
   it is: code, research, data analysis, decks and docs, writing, ops. Read it from
@@ -69,10 +86,18 @@ already exists didn't prevent it before adding anything; prefer a script, a chec
 or a skill with its own trigger over another sentence of instructions; count from
 real records before believing a fix.
 
-1. Run the counts (no model calls, a minute or two):
-   `python3 KIT/profile/profile.py --root LOOK --out OUT/profile --owner <first name>`
-   (add `--claude DIR --codex DIR` for history in other places; `--since` to limit
-   it). The first name comes from `git config user.name`, their chats or their
+1. Get every history from step 1 in. `profile.py` reads Claude Code and Codex
+   logs (`--root`, or `--claude DIR --codex DIR`), ChatGPT and Claude.ai exports
+   (`--export FILE`, zip or `conversations.json`; `--root` also finds zips in
+   Downloads). For any other history, write a short converter to the plain format
+   (one JSON object per line: `chat`, `time`, `role` user or assistant, `text`,
+   and `model`, `tool`, `project` when known; the top of `profile.py` has an
+   example) into `OUT/profile/converted/`, and pass it with `--messages FILE`. Keep
+   only what the person typed and what the AI answered; drop tool output. Then run
+   the counts (no model calls, a minute or two):
+   `python3 KIT/profile/profile.py --root LOOK --export ... --messages ... --out OUT/profile --owner <first name>`
+   (`--since` limits it). Check the first line of `profile.md` lists every source
+   you found, by tool. The first name comes from `git config user.name`, their chats or their
    instruction files; `--owner` only helps drop messages that other agents wrote
    about them, so leave it out if you don't know it yet. Read `OUT/profile/profile.md`. It covers: what they send (new requests,
    corrections, "keep going / is it done"); their gaps between messages and free
@@ -122,6 +147,10 @@ not answer yourself, each with the default you'll use if they don't reply:
   should be short and something they'd never type otherwise. (Default: none.)
 - Which kind of work they want the agents to take more of. (Default: the current
   mix.)
+- If they chat with ChatGPT or Claude.ai on the web and you found no export: ask
+  them to request one (Settings, Data controls, Export) and drop the zip in
+  Downloads; you'll add it to the profile when it arrives. (Default: profile
+  without it.)
 
 Then stop and wait for the reply. If no one can reply (you're running headless) or
 they say "use the defaults", continue with the defaults and list them in the
@@ -139,7 +168,11 @@ exactly that on sight. Propose it in the hand-over instead.
 - `OUT/me.md`: who they are and what they work on, who reads their output, what is
   off limits, how they want to be reported to, their machines (one line each), and
   which model to use for which kind of work given what they have (see
-  `KIT/MODELS.md`; recommend, don't assume). Short: under 40 lines. Whatever only
+  `KIT/MODELS.md`; recommend, don't assume). Add a **Reviewer** section with the
+  exact command or tool that starts a fresh reviewer from step 1, as you ran it
+  (for example how to pass the prompt, the model flag, and that it gets no
+  earlier context), and the same for web research if another tool searches
+  better. The skills point to this section. Short: under 40 lines. Whatever only
   matters in one project goes in that project's file instead.
 - `OUT/said-before.md`: the mined list from step 2, grouped by kind of work in the
   order an agent looks (any reply; decks and documents; screens; research and
@@ -163,6 +196,8 @@ exactly that on sight. Propose it in the hand-over instead.
 Three levels; say which you reached. (a) `install.py status` shows every tool
 linked. (b) A fresh agent loads the files. (c) A real past request gets a better
 answer.
+- Run the reviewer command from `me.md` once for real, on a small piece of the
+  work you just built, and check the answer came from the model you meant.
 - Start a fresh agent in an empty folder, on each tool they use, with a task
   typical for this person (take one from `OUT/profile/requests.tsv`). Check from
   its output that it read the universal file (ask it what it knows about the

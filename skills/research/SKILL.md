@@ -14,8 +14,9 @@ Run research the way `quality-loop` describes. A good research answer:
 - for a list, says how complete it is and how you know
 - says where the owner's own idea falls short, not only where it's right
 
-Search with whichever agent has the strongest web tool you can use (`MODELS.md`);
-hand the searching to it as a subagent if you are on another one.
+Search with the strongest web tool you can reach: if `~/.agents/me.md` names a
+research command on another tool, hand the searching to it; otherwise search
+yourself.
 
 How a good researcher works through one question (invented case): the owner asks
 "has anyone built something that watches a training run and tells you when it's

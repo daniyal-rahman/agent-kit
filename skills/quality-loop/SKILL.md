@@ -12,8 +12,9 @@ Before starting, write down what the owner will decide or do with the result,
 what a finished version looks like, and the few things that separate a good one
 from a passable one. Show the owner, and carry on if there's no reply.
 
-Do the task to that standard. Then get a review from a fresh agent, preferably on
-a different model family from the one that did the work (`MODELS.md` in the kit).
+Do the task to that standard. Then get a review from a fresh agent, started with
+the reviewer command in `~/.agents/me.md` (a different model family when the owner
+has one; otherwise the same model in a new session with no shared context).
 Give it the owner's request in their exact words (not your summary), the work as
 the owner will see it, and the part of `~/.agents/said-before.md` for this kind of
 work. Leave out your reasoning and your opinion of the work.

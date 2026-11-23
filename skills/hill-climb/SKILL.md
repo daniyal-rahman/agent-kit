@@ -20,14 +20,15 @@ wrong, so most of this is about keeping it honest.
   copies its bugs.
 
 ## 2. Set up the judge
-- A fresh agent every round, ideally another model family than the author's. It
+- A fresh agent every round, from the reviewer command in `~/.agents/me.md`. It
   gets the request, criteria, the artifact and fixed references; not your target,
   earlier scores or notes on what changed. Shared history makes judge and author
   drift into the same blind spot.
 - Show the rendered thing, not your description of it.
 - Ask which of two versions is better (both orders), or a 0 to 5 score. Fine
   1 to 10 steps are mostly noise.
-- Score the start with two different judges. Their gap is your noise.
+- Score the start twice: with the reviewer, and with a fresh agent of your own
+  model. Their gap is your noise.
 
 ## 3. Climb
 - Work on the most important weak category first. Keep a change only if it beats
@@ -40,7 +41,7 @@ wrong, so most of this is about keeping it honest.
   often it's the environment (tooling, compute, a missing check).
 
 ## 4. Stop
-At the target on a fresh rescore by both judges, or when a fresh rewrite doesn't
+At the target on a fresh rescore by both, or when a fresh rewrite doesn't
 help. Then cut what the score doesn't need. The owner decides where the top is.
 Run long climbs on usage that would otherwise go unused (overnight). Report scores
 by round, before and after, and what you cut.
