@@ -30,6 +30,8 @@ your say-so your mail or documents.
 
 ## What stays where
 Everything it learns about you is written to `~/.agents/` on your machine and
-nowhere else: not into this folder, not into git, not to any web service. Your
+nowhere else: not into this folder, not into git, not to any web service. It
+links your agent tools' instruction files and skill folders to it, and it offers
+(doesn't just do) a project instruction file for each of your main repos. Your
 existing instruction files are backed up to `~/.agents/backup/` and their text is
 kept. To update the kit later: `git pull` here, then `python3 install.py`.

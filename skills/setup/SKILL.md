@@ -18,10 +18,17 @@ from the owner.
 ## Settings
 Use these unless the owner or the person running you sets others:
 - `KIT` = two folders up from this file, after following links (the agent-kit folder).
-- `LOOK` = where to look: `~` (their home folder).
+- `LOOK` = where their history and instruction files are: `~` (their home
+  folder). Every `~/...` path in steps 1 and 2 means `LOOK/...`. Facts about the
+  machine itself (tools, OS, disks) come from the machine you're running on.
 - `OUT` = where everything personal goes: `~/.agents`. Never write personal
   files into `KIT`; the kit is updated by `git pull`.
-- `HOME_FOR_INSTALL` = the home the installer writes into: `~`.
+- `HOME_FOR_INSTALL` = the home the installer writes into: `~`. If it isn't `~`,
+  pass `--home HOME_FOR_INSTALL` to every `install.py` command, `status` included.
+
+Where you write: everything goes in `OUT`, plus the links the installer makes in
+each agent tool's config folder. The one exception is a project instruction file
+inside one of their repos (step 4), and only after they've seen it.
 
 Keep progress in `OUT/setup-progress.md`: one line per step done, with what you
 found and where you wrote it. If that file exists when you start, read it and
@@ -35,10 +42,12 @@ only; never delete, move or edit their history, mail or documents.
 ## 1. Look before asking (no questions yet)
 Find out, and write each fact with its source into the progress file:
 - **Agent tools**: which of `claude`, `codex`, `gemini`, `opencode`, `cursor-agent`,
-  `aider` are on the PATH, their versions, whether they're signed in (a config
-  folder with credentials, or a one-line test call), and which models they offer.
+  `aider` are on the PATH and their versions (`--version` only); whether they're
+  signed in (a config folder with credentials; if unsure, one tiny test call) and
+  which models they offer. Write "unknown" rather than guess.
 - **Machine**: operating system, CPU/GPU, disk space; other machines it can reach
-  (`~/.ssh/config` host names; don't log in anywhere yet).
+  (`~/.ssh/config` host names; don't log in anywhere yet). Keep apart a machine
+  you inspected and one you only saw mentioned in chats.
 - **Chat history**: `LOOK/.claude*/projects/`, `LOOK/.codex/sessions/`, Claude or
   ChatGPT export zips in Downloads (`conversations.json`), anything else you find.
   How many chats, from when to when.
@@ -63,11 +72,14 @@ real records before believing a fix.
 1. Run the counts (no model calls, a minute or two):
    `python3 KIT/profile/profile.py --root LOOK --out OUT/profile --owner <first name>`
    (add `--claude DIR --codex DIR` for history in other places; `--since` to limit
-   it). Read `OUT/profile/profile.md`. It covers: what they send (new requests,
+   it). The first name comes from `git config user.name`, their chats or their
+   instruction files; `--owner` only helps drop messages that other agents wrote
+   about them, so leave it out if you don't know it yet. Read `OUT/profile/profile.md`. It covers: what they send (new requests,
    corrections, "keep going / is it done"); their gaps between messages and free
    hour-long stretches; how long agents work per message and then wait for them;
    turns that ended in a permission question; how often a delivery's next reply is
-   a correction, by model and by kind of work.
+   a correction, by model and by kind of work. These are text-pattern estimates:
+   use them to choose where to look, and quote real messages as the evidence.
 2. **Mine what they keep repeating.** `OUT/profile/corrections.tsv` has every
    message that looks like a correction, with the end of the agent's reply before
    it. The regex over-collects: read them and keep only those where the agent had
@@ -75,12 +87,15 @@ real records before believing a fix.
    turn before to know what was skipped. Merge the same point across chats; count
    distinct chats; keep the owner's exact words (typos and all) and the date; take
    the latest word where they changed their mind. One project's standards go in
-   that project's file, not the list. A long history: split the file by month
-   across subagents, each returning candidate items with quotes, then merge.
+   that project's file, not the list. The rows are ordered round-robin across
+   chats, so the first few hundred cover many chats; `source_file` locates the
+   full turn. A long history: split the rows across subagents, each returning
+   candidate items with quotes, then merge.
 3. **Check why it wasn't prevented.** For each repeated item, look in the
    instructions they already had (step 1): was it written and still skipped (needs
    a trigger, a script or a check, not more words), or never written (a line in
-   the right file may be enough)?
+   the right file may be enough)? With no earlier instructions to compare, say the
+   cause is your hypothesis.
 4. Write `OUT/profile/bottlenecks.md`, one screen: their **three biggest
    bottlenecks**, each with the number behind it, the cause, and what you'll build
    for it. Examples of the shape (not answers): "agents stop after 1 minute in half
@@ -94,16 +109,19 @@ real records before believing a fix.
 Send one message, one phone screen: what you found (tools, machines, kinds of
 work, size of history), the three bottlenecks, then only the questions you could
 not answer yourself, each with the default you'll use if they don't reply:
-- Who uses their output (themselves, a team, clients, a supervisor)?
-- What is off limits: folders, accounts, people, kinds of data?
+- Who uses their output (themselves, a team, clients, a supervisor)? (Default:
+  what the chats show; otherwise themselves.)
+- What is off limits: folders, accounts, people, kinds of data? (Default: nothing
+  outside their home folder and repos; no mail, no accounts.)
 - What may you read for the voice library and the repeat-list: sent mail, a
-  documents folder, chats? (Default: chats only.)
+  documents folder, chats? (Default: chats only, and no voice library.)
 - How they like to be reported to (default: the kit's rule, result first, about
   100 words, on a phone).
 - A tag word for "you skipped things I already told you", which makes an agent go
   back through their instructions and chats and fix the misses. They pick it; it
   should be short and something they'd never type otherwise. (Default: none.)
-- Which kind of work they want the agents to take more of.
+- Which kind of work they want the agents to take more of. (Default: the current
+  mix.)
 
 Then stop and wait for the reply. If no one can reply (you're running headless) or
 they say "use the defaults", continue with the defaults and list them in the
@@ -130,12 +148,16 @@ serves the three bottlenecks most.
   universal file.
 - **Projects**: an instruction file for their two or three most active projects:
   how to build, test and run it, who reads its output, and its standards from the
-  mined list. Where the repo has no `AGENTS.md`, write one (don't commit it);
-  where it has one, write your additions to `OUT/projects/<name>.md` and show them.
+  mined list. Write it to `OUT/projects/<name>.md`; mark commands you didn't run
+  as unverified. In the hand-over, offer to copy it into the repo as `AGENTS.md`
+  (or merge it into the one there). Never commit in their repos.
 - Install: `python3 KIT/install.py` (add `--home HOME_FOR_INSTALL` if it isn't
   `~`), then `python3 KIT/install.py status`. Rerun it after any change to `me.md`.
 
 ## 5. Prove it
+Three levels; say which you reached. (a) `install.py status` shows every tool
+linked. (b) A fresh agent loads the files. (c) A real past request gets a better
+answer.
 - Start a fresh agent in an empty folder, on each tool they use, with a task
   typical for this person (take one from `OUT/profile/requests.tsv`). Check from
   its output that it read the universal file (ask it what it knows about the
@@ -144,15 +166,20 @@ serves the three bottlenecks most.
   fires. Fix what didn't load before you go on.
 - Pick one real past request of theirs that got corrected. Run it again with the
   new setup and show the old reply, the correction they had to make, and the new
-  reply, side by side. Say honestly if it isn't better.
+  reply, side by side. Say honestly if it isn't better. If you can't run the old
+  request again (its files are gone), replay just the reply: give a fresh agent
+  the chat up to that point and compare its answer with the corrected one.
 
 ## 6. Hand over
 Send the owner one screen: what was built (paths), the three bottlenecks and what
 now addresses each, the before/after, and what you couldn't do. Then how it grows:
-- A correction they make twice goes in `said-before.md` (the tag skill does this).
+- A correction they make twice goes in `said-before.md`: the tag skill adds it, or
+  they say "add that to my said-before list" in any chat.
 - A project lesson goes in that project's file, in one line with the reason.
-- Add rules reluctantly: guidance that exists gets skipped about half the time, so
-  a rule that keeps being skipped needs a check, a script or a trigger, not more
-  words. Delete lines a newer model no longer needs.
+- Add rules reluctantly. In one heavy user's audit, 9 of 13 corrections on decks
+  were things their instructions already said; a rule that keeps being skipped
+  needs a check, a script or a trigger, not more words. Delete lines a newer model no longer needs.
 - Rerun `profile.py` in a month and compare the three numbers.
 - To update the kit: `git pull` in `KIT`, then `python3 KIT/install.py`.
+- With no tag word, they keep `said-before.md` current by asking any agent to add
+  a line.

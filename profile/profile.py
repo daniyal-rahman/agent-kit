@@ -94,7 +94,9 @@ def read_claude(path):
     return dict(tool="claude", session=sid, cwd=cwd, events=events, path=path)
 
 def read_codex(path):
-    events, cwd, model, sid = [], None, None, os.path.basename(path)[:-6]
+    events, cwd, model = [], None, None
+    sid = os.path.basename(path)[:-6]
+    sid = sid[-36:] if re.search(r"[0-9a-f]{8}-[0-9a-f]{4}-", sid) else sid  # rollout-<date>-<uuid>
     for line in open(path, errors="replace"):
         try:
             d = json.loads(line)
@@ -182,8 +184,8 @@ def main():
             kind = "correction" if (prev_text and len(t) < 800 and CORRECTION.search(t)) else "continue or approve" if CONTINUE.search(t) else "new request or info"
             msgs.append(dict(session=s["session"], tool=s["tool"], project=proj, ts=ts, text=t, kind=kind, prev_model=prev_model, work=work_kind))
             if kind == "correction":
-                corr_rows.append((ts.astimezone(tz).strftime("%Y-%m-%d"), s["tool"], prev_model or "?", proj, s["session"][:8],
-                                  t[:400].replace("\t", " ").replace("\n", " "), prev_text[-400:].replace("\t", " ").replace("\n", " ")))
+                corr_rows.append((ts.astimezone(tz).strftime("%Y-%m-%d %H:%M"), s["tool"], prev_model or "?", proj, s["session"][:8],
+                                  t[:1500].replace("\t", " ").replace("\n", " "), prev_text[-600:].replace("\t", " ").replace("\n", " "), s["path"]))
             if agent:
                 end = agent[-1][1]
                 reply = ev[nxt][1] if nxt < len(ev) else None
@@ -246,8 +248,17 @@ def main():
     json.dump(out, open(os.path.join(a.out, "profile.json"), "w"), indent=1, default=str)
 
     with open(os.path.join(a.out, "corrections.tsv"), "w") as f:
-        f.write("date\ttool\tmodel_before\tproject\tchat\twhat_they_said\tend_of_agent_reply_before\n")
+        f.write("time\ttool\tmodel_before\tproject\tchat\twhat_they_said\tend_of_agent_reply_before\tsource_file\n")
+        # Round-robin across chats, so reading the first N rows covers many chats rather than the busiest one.
+        by_chat = collections.defaultdict(list)
         for r in sorted(corr_rows):
+            by_chat[r[4]].append(r)
+        queues, ordered = list(by_chat.values()), []
+        while any(queues):
+            for q in queues:
+                if q:
+                    ordered.append(q.pop(0))
+        for r in ordered:
             f.write("\t".join(r) + "\n")
     with open(os.path.join(a.out, "requests.tsv"), "w") as f:
         f.write("tool\tproject\tdate\tfirst_message\n")
@@ -259,8 +270,10 @@ def main():
             f.write("\t".join([m["ts"].astimezone(tz).strftime("%Y-%m-%d %H:%M"), m["tool"], m["project"], m["session"][:8], m["kind"],
                                m["prev_model"] or "?", m["text"][:500].replace("\t", " ").replace("\n", " ")]) + "\n")
 
+    raw = len(files)
     L = [f"# Agent-use profile ({out['window'][0]} to {out['window'][1]})" if days else "# Agent-use profile (no messages found)", "",
-         f"Read from {len(sessions)} chats: {dict(tools)}. Models seen: {dict(models)}.", "",
+         f"Read {raw} history files; {len(sessions)} chats had messages typed by the person ({len({m['session'] for m in msgs})} in the window). By tool: {dict(tools)}. Models seen: {dict(models)}.",
+         "All counts below come from text patterns: treat them as estimates to check against corrections.tsv, not findings.", "",
          "## Where the person's attention goes",
          *[f"- {k.replace('_', ' ')}: {v}" for k, v in attention.items()], "",
          "## What they send", *[f"- {k}: {v} ({v / max(1, len(msgs)):.0%})" for k, v in kinds.most_common()], "",

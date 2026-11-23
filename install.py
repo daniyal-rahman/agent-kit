@@ -40,12 +40,25 @@ def claude_homes():
         found = [os.path.join(HOME, ".claude")]
     return found
 
-def instruction_files():
-    files = [os.path.join(h, "CLAUDE.md") for h in claude_homes()]
-    for d, f in ((".codex", "AGENTS.md"), (".gemini", "GEMINI.md"), (".config/opencode", "AGENTS.md")):
+OTHERS = (("codex", ".codex", "AGENTS.md"), ("gemini", ".gemini", "GEMINI.md"), ("opencode", ".config/opencode", "AGENTS.md"))
+
+def tools():
+    """(tool, instruction file or None, why) for every tool we know, present or not."""
+    real = HOME == os.path.expanduser("~")
+    out = [("claude", os.path.join(h, "CLAUDE.md"), "config folder found") for h in claude_homes()]
+    if not out:
+        out.append(("claude", None, "not found (no ~/.claude* config folder)"))
+    for name, d, f in OTHERS:
         if os.path.isdir(os.path.join(HOME, d)):
-            files.append(os.path.join(HOME, d, f))
-    return files
+            out.append((name, os.path.join(HOME, d, f), "config folder found"))
+        elif real and shutil.which(name):
+            out.append((name, os.path.join(HOME, d, f), "on PATH; config folder created"))
+        else:
+            out.append((name, None, "not found" + (" (on PATH, but --home is a test folder)" if shutil.which(name) else "")))
+    return out
+
+def instruction_files():
+    return [f for _, f, _ in tools() if f]
 
 def backup(path):
     rel = os.path.relpath(path, HOME)
@@ -160,22 +173,28 @@ def install():
     print(f"agent-kit install into {HOME}")
     s = settings()
     generate()
-    for f in instruction_files():
-        link(OUT, f)
+    for name, f, why in tools():
+        print(f"  {name}: {why}")
+        if f:
+            link(OUT, f)
     sb = os.path.join(AG, "said-before.md")
     if not os.path.exists(sb):
         open(sb, "w").write("# What the owner has had to say before\n\nEmpty until setup mines it from past chats.\n")
     install_skills(render_personal(s))
     generate()  # me.md may have gained text from an old instruction file
     if not instruction_files():
-        print("  no agent tool found (looked for ~/.claude*, ~/.codex, ~/.gemini, ~/.config/opencode)")
+        print("  no agent tool found: install Claude Code or Codex, sign in, then rerun")
+    print(f"check: python3 {os.path.join(KIT, 'install.py')} status" + (f" --home {HOME}" if HOME != os.path.expanduser('~') else ""))
     print("done")
 
 def status():
     print(f"{OUT}: {sum(1 for _ in open(OUT)) if os.path.exists(OUT) else 0} lines")
-    for f in instruction_files():
+    for name, f, why in tools():
+        if not f:
+            print(f"  --  {name}: {why}")
+            continue
         ok = os.path.islink(f) and os.path.realpath(f) == os.path.realpath(OUT)
-        print(f"  {'ok ' if ok else 'OFF'} {f}")
+        print(f"  {'ok ' if ok else 'OFF'} {name}: {f}")
     names = set(kit_skills()) | {n for n in ("already-told-you", "voice") if os.path.isdir(os.path.join(AG, "skills", n))}
     for d in [os.path.join(AG, "skills")] + [os.path.join(h, "skills") for h in claude_homes()]:
         missing = [n for n in sorted(names) if not os.path.exists(os.path.join(d, n, "SKILL.md"))]
