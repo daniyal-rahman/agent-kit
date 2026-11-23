@@ -62,7 +62,9 @@ Find out, and write each fact with its source into the progress file:
   second agent CLI on the PATH that is signed in (for example `codex exec` from a
   Claude session, `claude -p` from a Codex one, `gemini -p`); an API key already in
   their environment. If none works, the reviewer is a fresh agent of the same
-  model with no shared context (a subagent, or a new headless session).
+  model with no shared context (a subagent, or a new headless session). A CLI on
+  the PATH doesn't prove it's signed in: mark each option "unverified" until the
+  one real call in step 5.
 - **Their work**: which folders hold it (git repos under home and common project
   folders), which are active (recent commits, recent chats), and what kind of work
   it is: code, research, data analysis, decks and docs, writing, ops. Read it from
@@ -91,8 +93,9 @@ real records before believing a fix.
    only what the person typed and what the AI answered; drop tool output. Then run
    the counts (no model calls, a minute or two):
    `python3 KIT/profile/profile.py --root LOOK --export ... --messages ... --out OUT/profile --owner <first name>`
-   (`--since` limits it). Check the first line of `profile.md` lists every source
-   you found, by tool. The first name comes from `git config user.name`, their chats or their
+   (`--since` limits it). Check the Sources table in `profile.md` lists every
+   history you found in step 1, with chats and dates you'd expect; if one is
+   missing or has zero messages typed, fix the converter before going on. The first name comes from `git config user.name`, their chats or their
    instruction files; `--owner` only helps drop messages that other agents wrote
    about them, so leave it out if you don't know it yet. Read `OUT/profile/profile.md`. It covers: what they send (new requests,
    corrections, "keep going / is it done"); their gaps between messages and free
@@ -149,7 +152,8 @@ not answer yourself, each with the default you'll use if they don't reply:
 
 Then stop and wait for the reply. If no one can reply (you're running headless) or
 they say "use the defaults", continue with the defaults and list them in the
-progress file.
+progress file. If they answer later, resume from the progress file and redo only
+what their answers change.
 
 ## 4. Build: rough version of everything, then improve
 Build all of these roughly first, then spend the remaining effort on whatever
@@ -192,7 +196,10 @@ Three levels; say which you reached. (a) `install.py status` shows every tool
 linked. (b) A fresh agent loads the files. (c) A real past request gets a better
 answer.
 - Run the reviewer command from `me.md` once for real, on a small piece of the
-  work you just built, and check the answer came from the model you meant.
+  work you just built (for example: "here is said-before.md; which two entries
+  would you merge?"), and check the answer came from the model you meant. Then
+  mark it verified in `me.md`. If it fails, write the same-model fallback there
+  instead. Don't skip this: every review the skills ask for depends on it.
 - Start a fresh agent in an empty folder, on each tool they use, with a task
   typical for this person (take one from `OUT/profile/requests.tsv`). Check from
   its output that it read the universal file (ask it what it knows about the
@@ -215,6 +222,7 @@ now addresses each, the before/after, and what you couldn't do. Then how it grow
   were things their instructions already said; a rule that keeps being skipped
   needs a check, a script or a trigger, not more words. Delete lines a newer model no longer needs.
 - Rerun `profile.py` in a month and compare the three numbers.
-- To update the kit: `git pull` in `KIT`, then `python3 KIT/install.py`.
+- To update the kit: `git pull` in `KIT`, then `python3 KIT/install.py` (with
+  `--home HOME_FOR_INSTALL` if you used one).
 - With no tag word, they keep `said-before.md` current by asking any agent to add
   a line.

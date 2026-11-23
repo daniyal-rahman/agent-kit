@@ -229,6 +229,8 @@ def main():
     files = [(read_claude, f) for d in a.claude for f in glob.glob(os.path.join(d, "**/*.jsonl"), recursive=True) if "/subagents/" not in f]
     files += [(read_codex, f) for d in a.codex for f in glob.glob(os.path.join(d, "**/*.jsonl"), recursive=True)]
     sessions = [s for s in (fn(f) for fn, f in files) if s]
+    a.export = list(dict.fromkeys(os.path.realpath(f) for f in a.export))  # --root may find a zip also passed by hand
+    a.messages = list(dict.fromkeys(os.path.realpath(f) for f in a.messages))
     for f in a.export:
         sessions += load_export(f)
     for f in a.messages:
@@ -364,6 +366,10 @@ def main():
     L = [f"# Agent-use profile ({out['window'][0]} to {out['window'][1]})" if days else "# Agent-use profile (no messages found)", "",
          f"Read {raw} history files; {len(sessions)} chats had messages typed by the person ({len({m['session'] for m in msgs})} in the window). By tool: {dict(tools)}. Models seen: {dict(models)}.",
          "All counts below come from text patterns: treat them as estimates to check against corrections.tsv, not findings.", "",
+         "## Sources", "| tool | chats | messages typed | first | last | correction candidates |", "|---|---:|---:|---|---|---:|",
+         *[f"| {t} | {len({m['session'] for m in msgs if m['tool'] == t})} | {n} | {min(m['ts'] for m in msgs if m['tool'] == t).astimezone(tz).date()} | "
+           f"{max(m['ts'] for m in msgs if m['tool'] == t).astimezone(tz).date()} | {sum(1 for m in msgs if m['tool'] == t and m['kind'] == 'correction')} |"
+           for t, n in tools.most_common()], "",
          "## Where the person's attention goes",
          *[f"- {k.replace('_', ' ')}: {v}" for k, v in attention.items()], "",
          "## What they send", *[f"- {k}: {v} ({v / max(1, len(msgs)):.0%})" for k, v in kinds.most_common()], "",
