@@ -130,6 +130,11 @@ progress file.
 ## 4. Build: rough version of everything, then improve
 Build all of these roughly first, then spend the remaining effort on whatever
 serves the three bottlenecks most.
+Prefer a check the agent runs when it matters (a test command, a script named in
+the project file, a skill with its own trigger) over another sentence. Don't
+install anything that watches or intercepts every chat (a hook at the end of each
+turn, a scheduled nag) without the owner's explicit yes: one heavy user rejected
+exactly that on sight. Propose it in the hand-over instead.
 - `OUT/settings.json`: `{"owner": "<first name>", "tag": "<tag or empty>"}`.
 - `OUT/me.md`: who they are and what they work on, who reads their output, what is
   off limits, how they want to be reported to, their machines (one line each), and
