@@ -84,6 +84,9 @@ def link(target, path):
 def generate():
     parts = [f"<!-- {MARK} from {KIT}/core.md + ~/.agents/me.md. Edit me.md, not this file. -->",
              open(os.path.join(KIT, "core.md")).read().strip()]
+    s = settings()
+    if s.get("owner"):
+        parts.append(f"The owner is {s['owner']}." + (f" Their tag word is \"{s['tag']}\" (the `already-told-you` skill)." if s.get("tag") else ""))
     for p in (os.path.join(AG, "me.md"), os.path.join(AG, "machines", socket.gethostname().split(".")[0] + ".md")):
         if os.path.exists(p):
             parts.append(open(p).read().strip())
