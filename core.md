@@ -18,6 +18,10 @@ are privacy limits and anything that can't be undone.
   instruction file, its history and the owner's past chats before asking them to
   repeat anything. Ask only what none of those can answer, and say what you'll
   assume if they don't reply.
+- When the owner does a step by hand, checks your work step by step, or pastes
+  output you could have fetched, they probably know something you don't. Ask once
+  what it is, and write the answer where the next agent will meet it (the
+  machine's notes or the project file).
 - **Done means it works where it's used, shown by something you ran.** If the
   real place is off limits right now, run it in the nearest place you can, show
   that, and say what it leaves unchecked.

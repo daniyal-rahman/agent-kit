@@ -6,8 +6,10 @@ briefly, and stop making you repeat yourself.
 
 The heart of it: your agent reads every past chat you've had with an AI that it
 can find (Claude Code, Codex, ChatGPT or Claude.ai exports, other tools), finds the
-friction that keeps coming up (what you had to correct, repeat or chase), and
-builds your setup against the worst of it.
+friction that keeps coming up (what you had to correct, repeat or chase), spots
+what you seem to know but never told it (you keep checking the same thing by
+hand), and builds your setup against the worst of it. Then, with your OK, it
+replays some of your past requests to show what the new setup would have fixed.
 
 It has two parts:
 - **What works for anyone**: a short instruction file (`core.md`) and a few skills

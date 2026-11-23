@@ -124,7 +124,23 @@ real records before believing a fix.
    a trigger, a script or a check, not more words), or never written (a line in
    the right file may be enough)? With no earlier instructions to compare, say the
    cause is your hypothesis.
-4. Write `OUT/profile/bottlenecks.md`, one screen: their **three biggest
+4. **Find what they know but never told the agent.** When an owner compensates by
+   hand, the agent is usually missing a fact: a job queue that drops submissions,
+   a reader who hates jargon, a login they have and never offered. The section
+   "What they may know but haven't said" in `profile.md`, with the messages in
+   `unspoken.tsv`, flags the signs: checking the same thing after the same action
+   ("did it actually submit"), directing step by step, pasting output the agent
+   could have fetched, doing a step themselves and reporting back, restating a
+   fact about a machine, naming who the output is for, what "done" means,
+   deadlines, and errors that recur across chats with no cause named. Also check
+   their active repos for their own commits right after an agent's commit to the
+   same files (`git log --stat`): what did they keep fixing? For each pattern that
+   shows up in several chats, read the messages, then try to learn the fact
+   yourself, read-only (job accounting such as `sacct` for vanished jobs, logs,
+   config, the tool's status command). Keep what you confirmed apart from what
+   needs the owner. The costliest few become questions in step 3, each quoting the
+   evidence. Skip patterns the evidence doesn't support.
+5. Write `OUT/profile/bottlenecks.md`, one screen: their **three biggest
    bottlenecks**, each with the number behind it, the cause, and what you'll build
    for it. Examples of the shape (not answers): "agents stop after 1 minute in half
    your turns and you reply 'continue' 14 times: core rule plus a project line on
@@ -137,6 +153,11 @@ real records before believing a fix.
 Send one message, one phone screen: what you found (tools, machines, kinds of
 work, size of history), the three bottlenecks, then only the questions you could
 not answer yourself, each with the default you'll use if they don't reply:
+- Up to three questions about what they know and haven't said, from step 2.4,
+  costliest first, each quoting the evidence, for example: "In 9 chats you asked
+  the agent to confirm a job was really queued after submitting. Is submission
+  unreliable there? What happens when it fails?" Not a generic interview.
+  (Default: use what you confirmed yourself; mark the rest as a guess.)
 - Who uses their output (themselves, a team, clients, a supervisor)? (Default:
   what the chats show; otherwise themselves.)
 - What is off limits: folders, accounts, people, kinds of data? (Default: nothing
@@ -186,7 +207,13 @@ exactly that on sight. Propose it in the hand-over instead.
 - **Voice**: if they send things under their own name and allowed a source, follow
   `KIT/skills/voice-setup/SKILL.md`. Output goes in `OUT/voice/`.
 - `OUT/machines/<hostname>.md` for each machine they use: what it's for, where
-  things go, what's slow or fragile. The installer adds this machine's file to the
+  things go, what's slow or fragile, and the facts from step 2.4 that belong to it.
+- **The small thing that removes the hand-holding.** Where a fact from step 2.4
+  makes work unreliable, build the tool the agent should use instead of a
+  sentence about it: for unreliable job submission, a submit-and-confirm wrapper
+  that submits, checks the queue, retries a set number of times and says plainly
+  which jobs are in. Put it in `OUT/bin/`, name it in the machine or project file,
+  and test it once, read-only where you can. The installer adds this machine's file to the
   universal file.
 - **Projects**: an instruction file for their two or three most active projects:
   how to build, test and run it, who reads its output, and its standards from the
@@ -198,8 +225,8 @@ exactly that on sight. Propose it in the hand-over instead.
 
 ## 5. Prove it
 Three levels; say which you reached. (a) `install.py status` shows every tool
-linked. (b) A fresh agent loads the files. (c) A real past request gets a better
-answer.
+linked. (b) A fresh agent loads the files. (c) Their own past requests get better
+answers: the back-test below.
 - Run the reviewer command from `me.md` once for real, on a small piece of the
   work you just built (for example: "here is said-before.md; which two entries
   would you merge?"), and check the answer came from the model you meant. Then
@@ -211,11 +238,24 @@ answer.
   owner), loaded the right skill for the task, and that its reply follows the
   reporting rule. If the tag is set, send it the tag and check the right skill
   fires. Fix what didn't load before you go on.
-- Pick one real past request of theirs that got corrected. Run it again with the
-  new setup and show the old reply, the correction they had to make, and the new
-  reply, side by side. Say honestly if it isn't better. If you can't run the old
-  request again (its files are gone), replay just the reply: give a fresh agent
-  the chat up to that point and compare its answer with the corrected one.
+- **Back-test on their history.** Once you believe the build would help, ask the
+  owner whether you may replay a sample of their past requests with it. Say what
+  it costs and that nothing in their repos changes. Two sizes:
+  - Small, reply-only (the default if they don't answer; about 8 requests, 3
+    model calls each, 10 to 20 minutes): `KIT/profile/replay.py pick`, read
+    `cases.json` and drop cases whose next message isn't a real correction or
+    whose request an agent wrote (swap in requests behind items on your mined
+    list), then `replay.py run` with `--judge-cmd` set to the reviewer command,
+    then `replay.py report`. Each request is answered with no instructions
+    ("before") and with the new files ("after"), and a fresh judge says whether
+    the owner's real next message would still have been needed.
+  - Full, if they say yes: 10 to 20 requests re-run as real work, each in a
+    throwaway copy of the repo at the commit it had then (`git worktree add` or a
+    clone in a temp folder), never in their working folders.
+  Report a count: of the corrections they had to make, how many the new setup
+  would have made unnecessary, how many still needed, and what it made worse.
+  Show one case side by side. The misses decide what you improve next; fix the
+  biggest, rerun only those cases, and stop when a fix stops moving the count.
 
 ## 6. Hand over
 Send the owner one screen: what was built (paths), the three bottlenecks and what

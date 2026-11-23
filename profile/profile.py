@@ -47,6 +47,37 @@ KINDS = [("decks and documents", r"\b(deck|slides?|pptx|presentation|report|writ
          ("research", r"\b(research|look into|find out|compare|alternatives|literature|state of the art|has anyone|best way)\b"),
          ("data and analysis", r"\b(analy[sz]|dataset|plot|chart|figure|stats?|regression|model|train|eval|benchmark|notebook)\b"),
          ("ops and machines", r"\b(server|ssh|deploy|install|disk|cron|docker|gpu|slurm|service|network|backup|nas)\b")]
+# Signs the person knows something the agent doesn't: they compensate by hand instead of saying it.
+UNSPOKEN = {
+    "checks the same thing after an action": r"did (it|that|the \w+) (actually |really )?(go through|submit|start|run|land|deploy|push|queue|finish|save|send|work)"
+        r"|(is|was) it (actually |really )?(queued|running|submitted|up|live|deployed|pushed|saved)|check (the |if |whether )?(queue|status|logs?|it (went|actually|really))"
+        r"|make sure (it|that) (actually|really)|\b(squeue|sacct|qstat|kubectl get|docker ps|systemctl status|gh run)\b",
+    "pastes output the agent could fetch": r"(Traceback \(most recent|^\s*\$ \S|\berror(\[|:)|\bFAILED\b|exit (code|status) \d|\bE\d{3,}\b|^\s*at \S+\(|^\S+@\S+:.*\$|^\s*(warning|error|fatal|panic)\b|\d+:\d+:\d+.*\b(INFO|WARN|ERROR)\b)",
+    "did a step themselves": r"\bi (just |already )?(ran|restarted|rebooted|reran|resubmitted|fixed|installed|pushed|merged|deleted|killed|cancell?ed|submitted|changed|updated|logged in|uploaded|moved)\b"
+        r"|\b(nvm|never ?mind),? i|done on my (end|side)|i did it (myself|manually)",
+    "restates a fact about a machine or service": r"\b(remember|fyi|note|btw|keep in mind)\b.{0,40}\b(server|cluster|node|machine|box|gpu|laptop|desktop|vm|db|database|queue|api|account|disk|drive)\b"
+        r"|\b(the|my|our) (server|cluster|node|machine|box|gpu|laptop|desktop|vm|db|database|queue|api|disk|drive) (is|has|can'?t|cannot|doesn'?t|only|needs|runs|won'?t|isn'?t|always|sometimes)\b",
+    "says who the output is for": r"\b(for |to )?my (boss|advisor|adviser|supervisor|manager|team|client|prof|professor|pi|reviewers?|investors?|cofounder|co-founder|users)\b"
+        r"|\b(send|sending|show|showing|present|presenting) (this|it) to\b",
+    "says what done means": r"\b(not|isn'?t) (done|finished|what i meant)|\bdone means\b|\bby done i\b|\bi meant\b|\bwhat i (actually )?(want|wanted|meant) (is|was)\b",
+    "mentions access the agent didn't use": r"\bi have (access|an account|a key|a token|admin|credentials|a login)\b|\bi can (log ?in|access|get you)\b|\b(use|try) my (account|key|login|token)\b",
+    "mentions a deadline": r"\b(deadline|due (on|by|tomorrow|friday|monday)|by (tomorrow|tonight|monday|tuesday|wednesday|thursday|friday|eod|end of (day|week))|before (the|my) (meeting|call|demo|talk))\b",
+}
+ERRORS = r"(no space left|permission denied|connection (refused|reset|timed out)|out of memory|oom|timed? ?out|rate.?limit|429|503|socket timed out|submission failed|not authenticated|token expired|quota|killed|segmentation fault|disk full)"
+
+def step_runs(ev):
+    """Runs of 3+ short owner messages in a row, each answered quickly: directing step by step."""
+    runs, cur = 0, 0
+    hum = [e for e in ev if e[0] == "human"]
+    for a, b in zip(hum, hum[1:]):
+        if len(b[2]) < 90 and (b[1] - a[1]).total_seconds() < 600 and not CONTINUE.search(b[2]):
+            cur += 1
+            if cur == 2:
+                runs += 1
+        else:
+            cur = 0
+    return runs
+
 THEMES = {  # cheap cross-chat themes: what the person keeps saying, counted by distinct chat
     "didn't test / run it": r"did (u|you) (test|run|try|check)|test(ed)? it|does it (even )?work|not working|still broken",
     "no screenshots / can't see it": r"screenshot|show me|can'?t (see|open|find)|where is it|send (me )?(the )?(link|file)",
@@ -274,7 +305,8 @@ def main():
             prev_model = next((e[3] for e in reversed(ev[:i]) if e[0] == "agent" and e[3]), None)
             t, ts = ev[i][2], ev[i][1]
             kind = "correction" if (prev_text and len(t) < 800 and CORRECTION.search(t)) else "continue or approve" if CONTINUE.search(t) else "new request or info"
-            msgs.append(dict(session=s["session"], tool=s["tool"], project=proj, ts=ts, text=t, kind=kind, prev_model=prev_model, work=work_kind))
+            msgs.append(dict(session=s["session"], tool=s["tool"], project=proj, ts=ts, text=t, kind=kind, prev_model=prev_model, work=work_kind,
+                             path=s["path"], prev_text=prev_text))
             if kind == "correction":
                 corr_rows.append((ts.astimezone(tz).strftime("%Y-%m-%d %H:%M"), s["tool"], prev_model or "?", proj, s["session"][:8],
                                   t[:1500].replace("\t", " ").replace("\n", " "), prev_text[-600:].replace("\t", " ").replace("\n", " "), s["path"]))
@@ -330,13 +362,44 @@ def main():
             themes[name] = dict(chats=len({m["session"] for m in hit}), messages=len(hit), first=first["ts"].astimezone(tz).date().isoformat(),
                                 last=last["ts"].astimezone(tz).date().isoformat(), example=last["text"][:160].replace("\n", " "))
     themes = dict(sorted(themes.items(), key=lambda kv: -kv[1]["chats"]))
+    # 6. What they may know but haven't told the agent.
+    unspoken, un_rows = {}, []
+    for name, rx in UNSPOKEN.items():
+        hit = [m for m in msgs if re.search(rx, m["text"], re.I | re.M)]
+        if name == "pastes output the agent could fetch":
+            hit = [m for m in hit if m["text"].count("\n") >= 1]
+        if hit:
+            unspoken[name] = dict(chats=len({m["session"] for m in hit}), messages=len(hit), example=hit[-1]["text"][:160].replace("\n", " "))
+            un_rows += [(name, m) for m in hit]
+    steps = collections.Counter()
+    for s in sessions:
+        n = step_runs(sorted(s["events"], key=lambda e: e[1]))
+        if n:
+            steps[s["session"]] = n
+    if steps:
+        unspoken["directs step by step (3+ short messages in a row)"] = dict(chats=len(steps), messages=sum(steps.values()), example="")
+    errs = collections.defaultdict(set)
+    for s in sessions:
+        for e in s["events"]:
+            for m in re.finditer(ERRORS, e[2] if e[0] == "agent" else "", re.I):
+                k = m.group(1).lower()
+                k = ("out of memory" if k in ("oom", "killed") else "timed out" if "time" in k else "rate limit" if k in ("429", "quota") or "rate" in k else k)
+                errs[k].add(s["session"])
+    recurring = {k: len(v) for k, v in sorted(errs.items(), key=lambda kv: -len(kv[1])) if len(v) >= 3}
+    unspoken = dict(sorted(unspoken.items(), key=lambda kv: -kv[1]["chats"]))
+    with open(os.path.join(a.out, "unspoken.tsv"), "w") as f:
+        f.write("signal\ttime\ttool\tproject\tchat\twhat_they_said\tend_of_agent_reply_before\tsource_file\n")
+        for name, m in un_rows:
+            f.write("\t".join([name, m["ts"].astimezone(tz).strftime("%Y-%m-%d %H:%M"), m["tool"], m["project"], m["session"][:8],
+                               m["text"][:1000].replace("\t", " ").replace("\n", " "), m["prev_text"][-400:].replace("\t", " ").replace("\n", " "), m["path"]]) + "\n")
+    out_unspoken = dict(signals=unspoken, errors_in_3_or_more_chats=recurring)
     work = collections.Counter(m["work"] for m in msgs)
     projects = collections.Counter(m["project"] for m in msgs).most_common(10)
     tools = collections.Counter(m["tool"] for m in msgs)
     models = collections.Counter(t["model"] for t in turns if t["model"]).most_common(8)
     out = dict(window=[days[0].isoformat(), days[-1].isoformat()] if days else None, tools=dict(tools), models=dict(models),
                attention=attention, message_kinds=dict(kinds), agent_runs=runs, corrected_by_model=rate("model"),
-               corrected_by_work=rate("work"), repeated_themes=themes, work_mix=dict(work.most_common()), top_projects=dict(projects))
+               corrected_by_work=rate("work"), unspoken=out_unspoken, repeated_themes=themes, work_mix=dict(work.most_common()), top_projects=dict(projects))
     json.dump(out, open(os.path.join(a.out, "profile.json"), "w"), indent=1, default=str)
 
     with open(os.path.join(a.out, "corrections.tsv"), "w") as f:
@@ -357,10 +420,10 @@ def main():
         for r in sorted(req_rows, key=lambda r: r[2]):
             f.write("\t".join(x.replace("\t", " ").replace("\n", " ") for x in r) + "\n")
     with open(os.path.join(a.out, "messages.tsv"), "w") as f:
-        f.write("time\ttool\tproject\tchat\tkind\tmodel_before\ttext\n")
+        f.write("time\ttool\tproject\tchat\tkind\tmodel_before\ttext\tsource_file\n")
         for m in sorted(msgs, key=lambda m: m["ts"]):
             f.write("\t".join([m["ts"].astimezone(tz).strftime("%Y-%m-%d %H:%M"), m["tool"], m["project"], m["session"][:8], m["kind"],
-                               m["prev_model"] or "?", m["text"][:500].replace("\t", " ").replace("\n", " ")]) + "\n")
+                               m["prev_model"] or "?", m["text"][:500].replace("\t", " ").replace("\n", " "), m["path"]]) + "\n")
 
     raw = len(files)
     L = [f"# Agent-use profile ({out['window'][0]} to {out['window'][1]})" if days else "# Agent-use profile (no messages found)", "",
@@ -380,6 +443,9 @@ def main():
          "By kind of work:", *[f"- {k}: {v['corrected']}/{v['turns']} ({v['share']:.0%})" for k, v in out["corrected_by_work"].items()], "",
          "## Themes they keep correcting (regex first pass; read corrections.tsv for the real list)",
          *[f"- {k}: {v['chats']} chats, {v['first']} to {v['last']}. e.g. \"{v['example']}\"" for k, v in themes.items()], "",
+         "## What they may know but haven't said (signals; read unspoken.tsv for the messages)",
+         *[f"- {k}: {v['chats']} chats, {v['messages']} times" + (f". e.g. \"{v['example']}\"" if v["example"] else "") for k, v in unspoken.items()],
+         "Errors in the agent's replies that recur across 3+ chats: " + (", ".join(f"{k} ({n} chats)" for k, n in recurring.items()) or "none"), "",
          "## Kind of work (by the first messages of each chat)", *[f"- {k}: {v}" for k, v in work.most_common()], "",
          "## Busiest projects", *[f"- {k}: {v} messages" for k, v in projects], ""]
     open(os.path.join(a.out, "profile.md"), "w").write("\n".join(L))

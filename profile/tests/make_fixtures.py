@@ -44,4 +44,28 @@ with open(os.path.join(out, "other-tool.jsonl"), "w") as f:
                                       ("user", "screenshot of the page pls, i told you to always send one")]):
         f.write(json.dumps({"chat": "x1", "time": T0 + 3 * 86400 + i * 120, "role": role, "text": text, "tool": "some-editor",
                             "project": "webapp", "model": "model-x" if role == "assistant" else None}) + "\n")
+# Two things the person knows but never tells the agent, planted for the "unspoken" check:
+# 1. job submission on their cluster fails silently now and then, so they check every time;
+# 2. the write-ups are for their advisor, who wants no jargon; they fix it each time instead of saying so.
+unspoken = {
+    "s1": [("user", "train the baseline on the cluster"), ("assistant", "Submitted with sbatch train.sh. It will take about 3 hours."),
+           ("user", "did it actually submit? check squeue"), ("assistant", "squeue shows nothing for your user. The submit seems to have failed silently."),
+           ("user", "resubmit"), ("assistant", "Resubmitted, job 4411 is pending."), ("user", "check the queue again in a bit, make sure its really there")],
+    "s2": [("user", "run the ablation sweep, 6 jobs"), ("assistant", "All 6 submitted."),
+           ("user", "check squeue, did they all go through"), ("assistant", "Only 4 of 6 are in the queue."),
+           ("user", "sbatch: error: Batch job submission failed: Socket timed out on send/recv operation\nsbatch: error: Batch job submission failed\nthats what i get when i do it by hand. i resubmitted the other 2 myself, theyre in now")],
+    "s3": [("user", "submit the eval job"), ("assistant", "Submitted eval.sh as job 4502."),
+           ("user", "is it actually queued? last time it vanished"), ("assistant", "Yes, 4502 is pending.")],
+    "w1": [("user", "write up the baseline results"), ("assistant", "Results: the model achieves SOTA AUROC with a 2-layer MLP head and focal loss..."),
+           ("user", "too much jargon, this is going to my advisor. plain words")],
+    "w2": [("user", "summarise the ablations for the weekly update"), ("assistant", "The ablation shows the LR warmup is load-bearing; the OOD split regresses..."),
+           ("user", "again, my advisor wont know what OOD or load-bearing means. rewrite it simply")],
+    "w3": [("user", "draft the methods paragraph"), ("assistant", "We fine-tune via LoRA (r=16) with cosine annealing..."),
+           ("user", "explain lora in one line, its for my advisor")],
+}
+with open(os.path.join(out, "research-tool.jsonl"), "w") as f:
+    for n, (chat, turns) in enumerate(unspoken.items()):
+        for i, (role, text) in enumerate(turns):
+            f.write(json.dumps({"chat": chat, "time": T0 + (5 + n) * 86400 + i * 240, "role": role, "text": text,
+                                "tool": "some-cli", "project": "thesis", "model": "model-y" if role == "assistant" else None}) + "\n")
 print("wrote", out)
