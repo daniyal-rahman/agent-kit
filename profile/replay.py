@@ -79,13 +79,14 @@ def run(a):
     for c in cases:
         if "verdict" in c:
             continue
-        c["before"], c["after"] = call(a.cmd, ask(c, "")), call(a.cmd, ask(c, setup))
+        if not c.get("after"):
+            c["before"], c["after"] = call(a.cmd, ask(c, "")), call(a.cmd, ask(c, setup))
         flip = random.random() < .5
         x, y = (c["after"], c["before"]) if flip else (c["before"], c["after"])
         judge = (f"An owner asked an AI agent for something. Here is the end of the conversation:\n\n{c['context'][-1][1]}\n\n"
                  f"What the owner actually said next, after the real agent's reply:\n\n{c['next']}\n\nTwo candidate replies:\n\n## Reply X\n{x}\n\n## Reply Y\n{y}\n\n"
-                 "For each reply: would the owner still have needed to say what they said next (yes / no / partly)? Does it do anything worse than "
-                 "the other (one line, or none)? Answer only JSON: {\"X\": {\"still_needed\": \"...\", \"worse\": \"...\"}, \"Y\": {...}}")
+                 "For each reply: would the owner still have needed to say what they said next (yes / no / partly)? Does it do something "
+                 "this owner would object to that the other reply doesn't (one line, or exactly none)? Judge the substance, not length or format. Answer only JSON: {\"X\": {\"still_needed\": \"...\", \"worse\": \"...\"}, \"Y\": {...}}")
         raw = call(a.judge_cmd or a.cmd, judge)
         try:
             v = json.loads(raw[raw.index("{"):raw.rindex("}") + 1])
@@ -99,11 +100,12 @@ def report(a):
     cases = [c for c in json.load(open(os.path.join(a.out, "cases.json"))) if "verdict" in c]
     cor = [c for c in cases if c["corrected"]]
     n = lambda cs, side, val: sum(1 for c in cs if c["verdict"][side]["still_needed"].lower().startswith(val))
-    worse = [c for c in cases if c["verdict"]["after"].get("worse", "none").lower() not in ("none", "", "no", "n/a")]
+    bad = lambda c, side: c["verdict"][side].get("worse", "none").strip(" .").lower() not in ("none", "", "no", "n/a")
+    worse = [c for c in cases if bad(c, "after")]
     lines = [f"Back-test, reply-only: {len(cases)} past requests, {len(cor)} of which drew a correction.",
              f"Corrections no longer needed: after {n(cor, 'after', 'no')}/{len(cor)} (partly {n(cor, 'after', 'partly')}), "
              f"before {n(cor, 'before', 'no')}/{len(cor)} (partly {n(cor, 'before', 'partly')}).",
-             f"Still needed after: {n(cor, 'after', 'yes')}/{len(cor)}.", f"After did something worse: {len(worse)}/{len(cases)}."]
+             f"Still needed after: {n(cor, 'after', 'yes')}/{len(cor)}.", f"Did something the owner would object to: after {len(worse)}/{len(cases)}, before {sum(bad(c, 'before') for c in cases)}/{len(cases)}."]
     lines += [f"- case {c['id']}: {c['verdict']['after']['worse']}" for c in worse]
     open(os.path.join(a.out, "report.md"), "w").write("\n".join(lines) + "\n")
     print("\n".join(lines))
